@@ -62,8 +62,8 @@ void ssd1306_setup(ssd1306_t *ssd_ptr) {
 void buzzer_init() {
   // Configura o pino do buzzer para PWM
   gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
-  slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
-  channel_num = pwm_gpio_to_channel(BUZZER_PIN);
+  uint slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
+  uint channel_num = pwm_gpio_to_channel(BUZZER_PIN);
 
   // Configuração inicial do PWM
   pwm_config config = pwm_get_default_config();
