@@ -21,6 +21,31 @@
 #define led1 11
 #define led2 12
 
+// define variáveis para debounce do botão
+volatile uint32_t last_time_btn_press = 0;
+
+// debounce delay
+const uint32_t debounce_delay_ms = 260;
+
+void i2c_setup(uint baud_in_kilo) {
+  i2c_init(I2C_PORT, baud_in_kilo * 1000);
+
+  gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
+  gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
+  gpio_pull_up(I2C_SDA);
+  gpio_pull_up(I2C_SCL);
+}
+
+void ssd1306_setup(ssd1306_t *ssd_ptr) {
+  ssd1306_init(ssd_ptr, WIDTH, HEIGHT, false, SSD1306_ADDRESS, I2C_PORT); // Inicializa o display
+  ssd1306_config(ssd_ptr);                                                // Configura o display
+  ssd1306_send_data(ssd_ptr);                                             // Envia os dados para o display
+
+  // Limpa o display. O display inicia com todos os pixels apagados.
+  ssd1306_fill(ssd_ptr, false);
+  ssd1306_send_data(ssd_ptr);
+}
+
 void vBlinkLed1Task()
 {
     gpio_init(led1);
@@ -49,20 +74,12 @@ void vBlinkLed2Task()
 
 void vDisplay3Task()
 {
-    // I2C Initialisation. Using it at 400Khz.
-    i2c_init(I2C_PORT, 400 * 1000);
+    // Inicialização do protocolo I2C com 400Khz
+    i2c_setup(400);
 
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);                    // Set the GPIO pin function to I2C
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);                    // Set the GPIO pin function to I2C
-    gpio_pull_up(I2C_SDA);                                        // Pull up the data line
-    gpio_pull_up(I2C_SCL);                                        // Pull up the clock line
-    ssd1306_t ssd;                                                // Inicializa a estrutura do display
-    ssd1306_init(&ssd, WIDTH, HEIGHT, false, SSD1306_ADDRESS, I2C_PORT); // Inicializa o display
-    ssd1306_config(&ssd);                                         // Configura o display
-    ssd1306_send_data(&ssd);                                      // Envia os dados para o display
-    // Limpa o display. O display inicia com todos os pixels apagados.
-    ssd1306_fill(&ssd, false);
-    ssd1306_send_data(&ssd);
+    // Inicializa a estrutura do display
+    ssd1306_t ssd;
+    ssd1306_setup(&ssd);
 
     char str_y[5]; // Buffer para armazenar a string
     int contador = 0;
@@ -87,19 +104,26 @@ void vDisplay3Task()
 
 // Trecho para modo BOOTSEL com botão B
 #include "pico/bootrom.h"
-#define botaoB 6
-void gpio_irq_handler(uint gpio, uint32_t events)
-{
-    reset_usb_boot(0, 0);
+#define BTN_B_PIN 6
+void gpio_irq_handler(uint gpio, uint32_t events) {
+  uint32_t current_time = to_ms_since_boot(get_absolute_time()); // retorna o tempo total em ms desde o boot do rp2040
+
+  // verifica se a diff entre o tempo atual e a ultima vez que o botão foi pressionado é maior que o tempo de debounce
+  if (current_time - last_time_btn_press > debounce_delay_ms) {
+    last_time_btn_press = current_time;
+    if (gpio == BTN_B_PIN) {
+      reset_usb_boot(0, 0);
+    }
+  }
 }
 
 int main()
 {
     // Para ser utilizado o modo BOOTSEL com botão B
-    gpio_init(botaoB);
-    gpio_set_dir(botaoB, GPIO_IN);
-    gpio_pull_up(botaoB);
-    gpio_set_irq_enabled_with_callback(botaoB, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_init(BTN_B_PIN);
+    gpio_set_dir(BTN_B_PIN, GPIO_IN);
+    gpio_pull_up(BTN_B_PIN);
+    gpio_set_irq_enabled_with_callback(BTN_B_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     // Fim do trecho para modo BOOTSEL com botão B
 
     stdio_init_all();
