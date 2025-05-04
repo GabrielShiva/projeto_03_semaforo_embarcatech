@@ -28,7 +28,7 @@
 #define led2 12
 
 // define variável global para trocar modo de operação (NORMAL e NOTURNO)
-volatile bool is_normal_mode = true;
+volatile bool is_night_mode = false;
 
 // define variáveis para debounce do botão
 volatile uint32_t last_time_btn_press = 0;
@@ -145,17 +145,6 @@ void vDisplayTask() {
     }
 }
 
-void vLedMatrixTask() {
-  // Inicializa matriz de LEDs
-  npInit(LED_PIN);
-  npClear();
-  npSetBrightness(255);
-  npWrite();
-
-  while (true) {
-  }
-}
-
 void vBuzzerTask() {
   float buzzer_freq = 0.0f;
 
@@ -163,6 +152,30 @@ void vBuzzerTask() {
 
   while (true) {
     define_buzzer_state(buzzer_freq);
+  }
+}
+
+void vLedMatrixTask() {
+  // Define as posições dos LEDs do semáforo
+  // const uint RED_LED_INDEX    = 17;
+  // const uint YELLOW_LED_INDEX = 12;
+  // const uint GREEN_LED_INDEX  = 7;
+  npClear();
+  npWrite();
+
+  while (true) {
+    if (is_night_mode) {
+      npSetLED(17, 0, 0, 0);
+      npSetLED(12, 215, 215, 0);
+      npSetLED(7, 0, 0, 0);
+      npWrite();
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      npSetLED(17, 0, 0, 0);
+      npSetLED(12, 0, 0, 0);
+      npSetLED(7, 0, 0, 0);
+      npWrite();
+      vTaskDelay(pdMS_TO_TICKS(2000));
+    }
   }
 }
 
@@ -192,13 +205,16 @@ int main() {
   gpio_set_irq_enabled_with_callback(BTN_B_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
   gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_FALL, true);
 
+  // Inicializa matriz de LEDs
+  npInit(LED_PIN);
+  npClear();
+  npWrite();
+
   // Criação das tarefas
-  xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE,
-        NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE,
-      NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vDisplayTask, "Task Display", configMINIMAL_STACK_SIZE,
-      NULL, tskIDLE_PRIORITY, NULL);
+  // xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  // xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  // xTaskCreate(vDisplayTask, "Task Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vLedMatrixTask, "Task LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
   vTaskStartScheduler();
