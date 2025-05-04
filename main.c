@@ -4,6 +4,7 @@
 #include "hardware/i2c.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
+#include "hardware/pwm.h"
 #include "lib/ws2818b.h"
 #include "ws2818b.pio.h"
 #include "lib/ssd1306.h"
@@ -21,14 +22,16 @@
 
 #define BTN_B_PIN 6
 #define BTN_A_PIN 5
+#define BUZZER_PIN 21
 
 #define led1 11
 #define led2 12
 
+// define variável global para trocar modo de operação (NORMAL e NOTURNO)
+volatile bool is_normal_mode = true;
+
 // define variáveis para debounce do botão
 volatile uint32_t last_time_btn_press = 0;
-
-// debounce delay
 const uint32_t debounce_delay_ms = 260;
 
 void btn_setup(uint gpio) {
@@ -56,8 +59,40 @@ void ssd1306_setup(ssd1306_t *ssd_ptr) {
   ssd1306_send_data(ssd_ptr);
 }
 
-void vBlinkLed1Task()
-{
+void buzzer_init() {
+  // Configura o pino do buzzer para PWM
+  gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
+  slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
+  channel_num = pwm_gpio_to_channel(BUZZER_PIN);
+
+  // Configuração inicial do PWM
+  pwm_config config = pwm_get_default_config();
+  pwm_init(slice_num, &config, true);
+  pwm_set_enabled(slice_num, false); // desliga PWM do pino ligado ao buzzer
+}
+
+void define_buzzer_state(float buzzer_freq) {
+  // if(led_rgb_state && volume_scale > 0) {
+  //   buzzer_freq = 200.0f + (volume_scale - 1) * 200.0f;
+
+  //   // Cálculos para configuração do PWM
+  //   uint32_t clock = 125000000; // Clock base de 125MHz
+  //   uint32_t divider = 125000000 / (uint32_t)(buzzer_freq * 1000);
+  //   uint32_t wrap = 125000000 / (divider * (uint32_t)buzzer_freq) - 1;
+
+  //   // Aplica as configurações
+  //   pwm_set_clkdiv_int_frac(slice_num, divider, 0);
+  //   pwm_set_wrap(slice_num, wrap);
+  //   pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
+  //   pwm_set_enabled(slice_num, true);
+  // } else {
+  //   // Desliga o PWM
+  //   pwm_set_enabled(slice_num, false);
+  //   gpio_put(BUZZER_PIN, 0); // Garante o silêncio
+  // }
+}
+
+void vBlinkLed1Task() {
     gpio_init(led1);
     gpio_set_dir(led1, GPIO_OUT);
     while (true)
@@ -69,8 +104,7 @@ void vBlinkLed1Task()
     }
 }
 
-void vBlinkLed2Task()
-{
+void vBlinkLed2Task() {
     gpio_init(led2);
     gpio_set_dir(led2, GPIO_OUT);
     while (true)
@@ -82,8 +116,7 @@ void vBlinkLed2Task()
     }
 }
 
-void vDisplay3Task()
-{
+void vDisplayTask() {
     // Inicialização do protocolo I2C com 400Khz
     i2c_setup(400);
 
@@ -110,6 +143,27 @@ void vDisplay3Task()
         ssd1306_send_data(&ssd);                           // Atualiza o display
         sleep_ms(735);
     }
+}
+
+void vLedMatrixTask() {
+  // Inicializa matriz de LEDs
+  npInit(LED_PIN);
+  npClear();
+  npSetBrightness(255);
+  npWrite();
+
+  while (true) {
+  }
+}
+
+void vBuzzerTask() {
+  float buzzer_freq = 0.0f;
+
+  buzzer_init();
+
+  while (true) {
+    define_buzzer_state(buzzer_freq);
+  }
 }
 
 void gpio_irq_handler(uint gpio, uint32_t events) {
@@ -143,7 +197,7 @@ int main() {
         NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE,
       NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vDisplay3Task, "Cont Task Disp3", configMINIMAL_STACK_SIZE,
+  xTaskCreate(vDisplayTask, "Task Display", configMINIMAL_STACK_SIZE,
       NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
