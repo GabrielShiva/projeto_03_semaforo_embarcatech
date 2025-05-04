@@ -87,32 +87,34 @@ void define_buzzer_state() {
 }
 
 void vDisplayTask() {
-    // Inicialização do protocolo I2C com 400Khz
-    i2c_setup(400);
+  // Inicialização do protocolo I2C com 400Khz
+  i2c_setup(400);
 
-    // Inicializa a estrutura do display
-    ssd1306_t ssd;
-    ssd1306_setup(&ssd);
+  // Inicializa a estrutura do display
+  ssd1306_t ssd;
+  ssd1306_setup(&ssd);
 
-    char str_y[5]; // Buffer para armazenar a string
-    int contador = 0;
-    bool cor = true;
-    while (true)
-    {
-        sprintf(str_y, "%d", contador); // Converte em string
-        contador++;                     // Incrementa o contador
-        ssd1306_fill(&ssd, !cor);                          // Limpa o display
-        ssd1306_rect(&ssd, 3, 3, 122, 60, cor, !cor);      // Desenha um retângulo
-        ssd1306_line(&ssd, 3, 25, 123, 25, cor);           // Desenha uma linha
-        ssd1306_line(&ssd, 3, 37, 123, 37, cor);           // Desenha uma linha
-        ssd1306_draw_string(&ssd, "CEPEDI   TIC37", 8, 6); // Desenha uma string
-        ssd1306_draw_string(&ssd, "EMBARCATECH", 20, 16);  // Desenha uma string
-        ssd1306_draw_string(&ssd, "  FreeRTOS", 10, 28); // Desenha uma string
-        ssd1306_draw_string(&ssd, "Contador  LEDs", 10, 41);    // Desenha uma string
-        ssd1306_draw_string(&ssd, str_y, 40, 52);          // Desenha uma string
-        ssd1306_send_data(&ssd);                           // Atualiza o display
-        sleep_ms(735);
-    }
+  bool color              = true;
+  char display_text[20] = {0};
+
+  while (true) {
+      ssd1306_fill(&ssd, !color);                          // Limpa o display
+      ssd1306_rect(&ssd, 3, 3, 122, 60, color, !color);      // Desenha um retângulo
+      ssd1306_line(&ssd, 3, 15, 123, 15, color);           // Desenha uma linha
+      ssd1306_line(&ssd, 3, 27, 123, 27, color);           // Desenha uma linha
+      ssd1306_draw_string(&ssd, "SEMAFORO", 32, 6); // Desenha uma string
+
+      if (is_night_mode) {
+        ssd1306_draw_string(&ssd, "MODO: NOTURNO", 6, 18);
+      } else {
+        ssd1306_draw_string(&ssd, "MODO: NORMAL", 6, 18);
+      }
+
+      ssd1306_draw_string(&ssd, "Contador  LEDs", 10, 41);    // Desenha uma string
+      ssd1306_draw_string(&ssd, "Modo", 40, 52);          // Desenha uma string
+      ssd1306_send_data(&ssd);                           // Atualiza o display
+      vTaskDelay(pdMS_TO_TICKS(20));
+  }
 }
 
 void vBuzzerTask() {
@@ -263,13 +265,11 @@ int main() {
   // gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_FALL, true);
 
   // Criação das tarefas
-  // xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  // xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  // xTaskCreate(vDisplayTask, "Task Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vLedMatrixTask, "Task LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vBuzzerTask, "Task Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vButtonsTask, "Task Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vLEDsRGBTask, "Task LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vDisplayTask, "Task: Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vButtonsTask, "Task: Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vLEDsRGBTask, "Task: LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
   vTaskStartScheduler();
