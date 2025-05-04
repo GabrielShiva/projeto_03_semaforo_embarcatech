@@ -152,10 +152,13 @@ void vBuzzerTask() {
   uint32_t divider = 0;
   uint32_t wrap    = 0;
 
+  const TickType_t step = pdMS_TO_TICKS(STEP_MS);
+  const int stepsPer = 2000 / STEP_MS;
+
   while (true) {
     if (is_night_mode) {
-      // buzzer_freq = 100.0f;
-      buzzer_freq = 0.0f;
+      buzzer_freq = 100.0f;
+      // buzzer_freq = 0.0f;
 
       // Cálculos para configuração do PWM
       uint32_t divider = clock / (uint32_t)(buzzer_freq * 1000);
@@ -169,11 +172,18 @@ void vBuzzerTask() {
       if (counter > 0) {
         // Ligado
         pwm_set_enabled(slice_num, true);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        for (int i = 0; i < stepsPer; ++i) {
+          if (!is_night_mode) break;    // abort if mode changed
+          vTaskDelay(step);
+        }
+        if (!is_night_mode) continue;     // re‐eval mode
 
         // Desligado
         pwm_set_enabled(slice_num, false);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        for (int i = 0; i < stepsPer; ++i) {
+          if (!is_night_mode) break;
+          vTaskDelay(step);
+        }
       }
     } else {
       pwm_set_enabled(slice_num, false);
@@ -422,7 +432,7 @@ int main() {
   // Criação das tarefas
   xTaskCreate(vDisplayTask, "Task: Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   // xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  // xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   // xTaskCreate(vButtonsTask, "Task: Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vLEDsRGBTask, "Task: LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
