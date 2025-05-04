@@ -27,12 +27,12 @@
 #define led1 11
 #define led2 12
 
-// define variável global para trocar modo de operação (NORMAL e NOTURNO)
-volatile bool is_night_mode = false;
-
-// define variáveis para debounce do botão
+// Define variáveis para debounce dos botões A e B
 volatile uint32_t last_time_btn_press = 0;
 const uint32_t debounce_delay_ms = 260;
+
+// define variável global para trocar modo de operação (NORMAL e NOTURNO)
+volatile bool is_night_mode = false;
 
 void btn_setup(uint gpio) {
   gpio_init(gpio);
@@ -59,37 +59,25 @@ void ssd1306_setup(ssd1306_t *ssd_ptr) {
   ssd1306_send_data(ssd_ptr);
 }
 
-void buzzer_init() {
-  // Configura o pino do buzzer para PWM
-  gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
-  uint slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
-  uint channel_num = pwm_gpio_to_channel(BUZZER_PIN);
+void define_buzzer_state() {
+    // // Cálculos para configuração do PWM
+    // uint32_t clock = 125000000; // Clock base de 125MHz
+    // uint32_t divider = 125000000 / (uint32_t)(buzzer_freq * 1000);
+    // uint32_t wrap = 125000000 / (divider * (uint32_t)buzzer_freq) - 1;
 
-  // Configuração inicial do PWM
-  pwm_config config = pwm_get_default_config();
-  pwm_init(slice_num, &config, true);
-  pwm_set_enabled(slice_num, false); // desliga PWM do pino ligado ao buzzer
-}
+    // // Aplica as configurações
+    // pwm_set_clkdiv_int_frac(slice_num, divider, 0);
+    // pwm_set_wrap(slice_num, wrap);
+    // pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
+    // pwm_set_enabled(slice_num, true);
 
-void define_buzzer_state(float buzzer_freq) {
-  // if(led_rgb_state && volume_scale > 0) {
-  //   buzzer_freq = 200.0f + (volume_scale - 1) * 200.0f;
+    // if (is_night_mode) {
+    //   // Ligado
+    //   vTaskDelay(pdMS_TO_TICKS(2000));
 
-  //   // Cálculos para configuração do PWM
-  //   uint32_t clock = 125000000; // Clock base de 125MHz
-  //   uint32_t divider = 125000000 / (uint32_t)(buzzer_freq * 1000);
-  //   uint32_t wrap = 125000000 / (divider * (uint32_t)buzzer_freq) - 1;
-
-  //   // Aplica as configurações
-  //   pwm_set_clkdiv_int_frac(slice_num, divider, 0);
-  //   pwm_set_wrap(slice_num, wrap);
-  //   pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
-  //   pwm_set_enabled(slice_num, true);
-  // } else {
-  //   // Desliga o PWM
-  //   pwm_set_enabled(slice_num, false);
-  //   gpio_put(BUZZER_PIN, 0); // Garante o silêncio
-  // }
+    //   // Desligado
+    //   vTaskDelay(pdMS_TO_TICKS(2000));
+    // }
 }
 
 void vBlinkLed1Task() {
@@ -148,20 +136,84 @@ void vDisplayTask() {
 void vBuzzerTask() {
   float buzzer_freq = 0.0f;
 
-  buzzer_init();
+  // Configura o pino do buzzer para PWM e obtém as infos do pino
+  gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
+  uint slice_num   = pwm_gpio_to_slice_num(BUZZER_PIN);
+  uint channel_num = pwm_gpio_to_channel(BUZZER_PIN);
+
+  // Configuração inicial do PWM
+  pwm_config config = pwm_get_default_config();
+  pwm_init(slice_num, &config, true);
+  pwm_set_enabled(slice_num, false); // desliga PWM do pino ligado ao buzzer
+
+  // Inicilização de variáveis para cálculo do PWM
+  uint32_t clock   = 125000000;
+  uint32_t divider = 0;
+  uint32_t wrap    = 0;
 
   while (true) {
-    define_buzzer_state(buzzer_freq);
+    if (is_night_mode) {
+      buzzer_freq = 100.0f;
+      // buzzer_freq = 8000.0f;
+
+      // Cálculos para configuração do PWM
+      uint32_t divider = clock / (uint32_t)(buzzer_freq * 1000);
+      uint32_t wrap    = clock / (divider * (uint32_t)buzzer_freq) - 1;
+
+      // Aplica as configurações
+      pwm_set_clkdiv_int_frac(slice_num, divider, 0);
+      pwm_set_wrap(slice_num, wrap);
+      pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
+
+      // Ligado
+      pwm_set_enabled(slice_num, true);
+      vTaskDelay(pdMS_TO_TICKS(2000));
+
+      // Desligado
+      pwm_set_enabled(slice_num, false);
+      vTaskDelay(pdMS_TO_TICKS(2000));
+    } else {
+      pwm_set_enabled(slice_num, false);
+      // gpio_put(BUZZER_PIN, 0);
+    }
+  }
+}
+
+void vButtonsTask() {
+  // define variáveis para debounce do botão
+  uint32_t current_time = 0;
+
+  // Iniciliza o botão A
+  btn_setup(BTN_A_PIN);
+
+  while(true) {
+    if (!gpio_get(BTN_A_PIN)) {
+      current_time = to_ms_since_boot(get_absolute_time()); // retorna o tempo total em ms desde o boot do rp2040
+
+      if (current_time - last_time_btn_press > debounce_delay_ms) {
+        last_time_btn_press = current_time;
+        is_night_mode = !is_night_mode;
+
+        if (is_night_mode) {
+          printf("Modo Atual: Noturno.\n");
+        } else {
+          printf("Modo Atual: Normal.\n");
+        }
+      }
+    }
   }
 }
 
 void vLedMatrixTask() {
+  npInit(LED_PIN);
+  npClear();
+  npWrite();
+
   // Define as posições dos LEDs do semáforo
   // const uint RED_LED_INDEX    = 17;
   // const uint YELLOW_LED_INDEX = 12;
   // const uint GREEN_LED_INDEX  = 7;
   npClear();
-  npWrite();
 
   while (true) {
     if (is_night_mode) {
@@ -175,6 +227,9 @@ void vLedMatrixTask() {
       npSetLED(7, 0, 0, 0);
       npWrite();
       vTaskDelay(pdMS_TO_TICKS(2000));
+    } else {
+      npClear();
+      npWrite();
     }
   }
 }
@@ -187,7 +242,14 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     last_time_btn_press = current_time;
 
     if (gpio == BTN_A_PIN) {
-      printf("botao A!\n");
+      // is_night_mode = !is_night_mode;
+
+      // if (is_night_mode) {
+      //   printf("Modo Atual: Noturno.\n");
+      // } else {
+      //   printf("Modo Atual: Normal.\n");
+      // }
+        printf("btn A pressionado\n");
     } else if (gpio == BTN_B_PIN) {
       reset_usb_boot(0, 0);
     }
@@ -198,23 +260,19 @@ int main() {
   stdio_init_all();
 
   // Inicilização dos botões
-  btn_setup(BTN_A_PIN);
   btn_setup(BTN_B_PIN);
 
   // Inicilização das interrupções para os botões
   gpio_set_irq_enabled_with_callback(BTN_B_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-  gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_FALL, true);
-
-  // Inicializa matriz de LEDs
-  npInit(LED_PIN);
-  npClear();
-  npWrite();
+  // gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_FALL, true);
 
   // Criação das tarefas
   // xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   // xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   // xTaskCreate(vDisplayTask, "Task Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vLedMatrixTask, "Task LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vBuzzerTask, "Task Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vButtonsTask, "Task Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
   vTaskStartScheduler();
