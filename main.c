@@ -1,6 +1,10 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
+#include "hardware/pio.h"
+#include "hardware/clocks.h"
+#include "lib/ws2818b.h"
+#include "ws2818b.pio.h"
 #include "lib/ssd1306.h"
 #include "lib/font.h"
 #include "FreeRTOS.h"
@@ -8,10 +12,11 @@
 #include "task.h"
 #include <stdio.h>
 
+// Definição de macros para o protocolo I2C (SSD1306)
 #define I2C_PORT i2c1
 #define I2C_SDA 14
 #define I2C_SCL 15
-#define endereco 0x3C
+#define SSD1306_ADDRESS 0x3C
 
 #define led1 11
 #define led2 12
@@ -52,7 +57,7 @@ void vDisplay3Task()
     gpio_pull_up(I2C_SDA);                                        // Pull up the data line
     gpio_pull_up(I2C_SCL);                                        // Pull up the clock line
     ssd1306_t ssd;                                                // Inicializa a estrutura do display
-    ssd1306_init(&ssd, WIDTH, HEIGHT, false, endereco, I2C_PORT); // Inicializa o display
+    ssd1306_init(&ssd, WIDTH, HEIGHT, false, SSD1306_ADDRESS, I2C_PORT); // Inicializa o display
     ssd1306_config(&ssd);                                         // Configura o display
     ssd1306_send_data(&ssd);                                      // Envia os dados para o display
     // Limpa o display. O display inicia com todos os pixels apagados.
@@ -101,9 +106,9 @@ int main()
 
     xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE,
          NULL, tskIDLE_PRIORITY, NULL);
-    xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE, 
+    xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE,
         NULL, tskIDLE_PRIORITY, NULL);
-    xTaskCreate(vDisplay3Task, "Cont Task Disp3", configMINIMAL_STACK_SIZE, 
+    xTaskCreate(vDisplay3Task, "Cont Task Disp3", configMINIMAL_STACK_SIZE,
         NULL, tskIDLE_PRIORITY, NULL);
     vTaskStartScheduler();
     panic_unsupported();

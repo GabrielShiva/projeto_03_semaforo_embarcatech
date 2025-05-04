@@ -31,18 +31,22 @@ pico_sdk_init()
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
 
-add_executable(${PROJECT_NAME}  
-        main.c 
+add_executable(${PROJECT_NAME}
+        main.c
         lib/ssd1306.c # Biblioteca para o display OLED
         )
 
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/ws2818b.pio)
+
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR})
 
-target_link_libraries(${PROJECT_NAME} 
-        pico_stdlib 
+target_link_libraries(${PROJECT_NAME}
+        pico_stdlib
         hardware_gpio
         hardware_i2c
-        FreeRTOS-Kernel 
+        hardware_pio
+        hardware_clocks
+        FreeRTOS-Kernel
         FreeRTOS-Kernel-Heap4
         )
 
