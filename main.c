@@ -24,8 +24,9 @@
 #define BTN_A_PIN 5
 #define BUZZER_PIN 21
 
-#define led1 11
-#define led2 12
+#define LED_RED 10
+#define LED_GREEN 11
+#define LED_BLUE 12
 
 // Define variáveis para debounce dos botões A e B
 volatile uint32_t last_time_btn_press = 0;
@@ -38,6 +39,11 @@ void btn_setup(uint gpio) {
   gpio_init(gpio);
   gpio_set_dir(gpio, GPIO_IN);
   gpio_pull_up(gpio);
+}
+
+void led_rgb_setup(uint gpio) {
+  gpio_init(gpio);
+  gpio_set_dir(gpio, GPIO_OUT);
 }
 
 void i2c_setup(uint baud_in_kilo) {
@@ -78,30 +84,6 @@ void define_buzzer_state() {
     //   // Desligado
     //   vTaskDelay(pdMS_TO_TICKS(2000));
     // }
-}
-
-void vBlinkLed1Task() {
-    gpio_init(led1);
-    gpio_set_dir(led1, GPIO_OUT);
-    while (true)
-    {
-        gpio_put(led1, true);
-        vTaskDelay(pdMS_TO_TICKS(250));
-        gpio_put(led1, false);
-        vTaskDelay(pdMS_TO_TICKS(1223));
-    }
-}
-
-void vBlinkLed2Task() {
-    gpio_init(led2);
-    gpio_set_dir(led2, GPIO_OUT);
-    while (true)
-    {
-        gpio_put(led2, true);
-        vTaskDelay(pdMS_TO_TICKS(500));
-        gpio_put(led2, false);
-        vTaskDelay(pdMS_TO_TICKS(2224));
-    }
 }
 
 void vDisplayTask() {
@@ -234,6 +216,20 @@ void vLedMatrixTask() {
   }
 }
 
+void vLEDsRGBTask() {
+  led_rgb_setup(LED_RED);
+  led_rgb_setup(LED_GREEN);
+  led_rgb_setup(LED_BLUE);
+
+  while (true) {
+    if (is_night_mode) {
+      gpio_put(LED_GREEN, true);
+    } else {
+      gpio_put(LED_GREEN, false);
+    }
+  }
+}
+
 void gpio_irq_handler(uint gpio, uint32_t events) {
   uint32_t current_time = to_ms_since_boot(get_absolute_time()); // retorna o tempo total em ms desde o boot do rp2040
 
@@ -273,6 +269,7 @@ int main() {
   xTaskCreate(vLedMatrixTask, "Task LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vBuzzerTask, "Task Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vButtonsTask, "Task Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vLEDsRGBTask, "Task LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
   vTaskStartScheduler();
