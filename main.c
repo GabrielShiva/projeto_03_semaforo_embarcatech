@@ -1,4 +1,5 @@
 #include "pico/stdlib.h"
+#include "pico/bootrom.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
 #include "hardware/pio.h"
@@ -18,6 +19,9 @@
 #define I2C_SCL 15
 #define SSD1306_ADDRESS 0x3C
 
+#define BTN_B_PIN 6
+#define BTN_A_PIN 5
+
 #define led1 11
 #define led2 12
 
@@ -26,6 +30,12 @@ volatile uint32_t last_time_btn_press = 0;
 
 // debounce delay
 const uint32_t debounce_delay_ms = 260;
+
+void btn_setup(uint gpio) {
+  gpio_init(gpio);
+  gpio_set_dir(gpio, GPIO_IN);
+  gpio_pull_up(gpio);
+}
 
 void i2c_setup(uint baud_in_kilo) {
   i2c_init(I2C_PORT, baud_in_kilo * 1000);
@@ -102,38 +112,41 @@ void vDisplay3Task()
     }
 }
 
-// Trecho para modo BOOTSEL com botão B
-#include "pico/bootrom.h"
-#define BTN_B_PIN 6
 void gpio_irq_handler(uint gpio, uint32_t events) {
   uint32_t current_time = to_ms_since_boot(get_absolute_time()); // retorna o tempo total em ms desde o boot do rp2040
 
   // verifica se a diff entre o tempo atual e a ultima vez que o botão foi pressionado é maior que o tempo de debounce
   if (current_time - last_time_btn_press > debounce_delay_ms) {
     last_time_btn_press = current_time;
-    if (gpio == BTN_B_PIN) {
+
+    if (gpio == BTN_A_PIN) {
+      printf("botao A!\n");
+    } else if (gpio == BTN_B_PIN) {
       reset_usb_boot(0, 0);
     }
   }
 }
 
-int main()
-{
-    // Para ser utilizado o modo BOOTSEL com botão B
-    gpio_init(BTN_B_PIN);
-    gpio_set_dir(BTN_B_PIN, GPIO_IN);
-    gpio_pull_up(BTN_B_PIN);
-    gpio_set_irq_enabled_with_callback(BTN_B_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    // Fim do trecho para modo BOOTSEL com botão B
+int main() {
+  stdio_init_all();
 
-    stdio_init_all();
+  // Inicilização dos botões
+  btn_setup(BTN_A_PIN);
+  btn_setup(BTN_B_PIN);
 
-    xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE,
-         NULL, tskIDLE_PRIORITY, NULL);
-    xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE,
+  // Inicilização das interrupções para os botões
+  gpio_set_irq_enabled_with_callback(BTN_B_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+  gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_FALL, true);
+
+  // Criação das tarefas
+  xTaskCreate(vBlinkLed1Task, "Blink Task Led1", configMINIMAL_STACK_SIZE,
         NULL, tskIDLE_PRIORITY, NULL);
-    xTaskCreate(vDisplay3Task, "Cont Task Disp3", configMINIMAL_STACK_SIZE,
-        NULL, tskIDLE_PRIORITY, NULL);
-    vTaskStartScheduler();
-    panic_unsupported();
+  xTaskCreate(vBlinkLed2Task, "Blink Task Led2", configMINIMAL_STACK_SIZE,
+      NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vDisplay3Task, "Cont Task Disp3", configMINIMAL_STACK_SIZE,
+      NULL, tskIDLE_PRIORITY, NULL);
+
+  // Chamda do Scheduller de tarefas
+  vTaskStartScheduler();
+  panic_unsupported();
 }
