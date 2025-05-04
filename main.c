@@ -24,9 +24,11 @@
 #define BTN_A_PIN 5
 #define BUZZER_PIN 21
 
-#define LED_RED 10
+#define LED_RED 13
 #define LED_GREEN 11
 #define LED_BLUE 12
+
+#define STEP_MS   100   // check every 100 ms
 
 // Define variáveis para debounce dos botões A e B
 volatile uint32_t last_time_btn_press = 0;
@@ -34,6 +36,7 @@ const uint32_t debounce_delay_ms = 260;
 
 // define variável global para trocar modo de operação (NORMAL e NOTURNO)
 volatile bool is_night_mode = false;
+volatile uint counter = 0;
 
 void btn_setup(uint gpio) {
   gpio_init(gpio);
@@ -98,11 +101,11 @@ void vDisplayTask() {
   char display_text[20] = {0};
 
   while (true) {
-      ssd1306_fill(&ssd, !color);                          // Limpa o display
-      ssd1306_rect(&ssd, 3, 3, 122, 60, color, !color);      // Desenha um retângulo
-      ssd1306_line(&ssd, 3, 15, 123, 15, color);           // Desenha uma linha
-      ssd1306_line(&ssd, 3, 27, 123, 27, color);           // Desenha uma linha
-      ssd1306_draw_string(&ssd, "SEMAFORO", 32, 6); // Desenha uma string
+      ssd1306_fill(&ssd, !color); // Limpa o display
+      ssd1306_rect(&ssd, 3, 3, 122, 60, color, !color);
+      ssd1306_line(&ssd, 3, 15, 123, 15, color);
+      ssd1306_line(&ssd, 3, 27, 123, 27, color);
+      ssd1306_draw_string(&ssd, "SEMAFORO", 32, 6);
 
       if (is_night_mode) {
         ssd1306_draw_string(&ssd, "MODO: NOTURNO", 6, 18);
@@ -110,10 +113,24 @@ void vDisplayTask() {
         ssd1306_draw_string(&ssd, "MODO: NORMAL", 6, 18);
       }
 
-      ssd1306_draw_string(&ssd, "Contador  LEDs", 10, 41);    // Desenha uma string
-      ssd1306_draw_string(&ssd, "Modo", 40, 52);          // Desenha uma string
-      ssd1306_send_data(&ssd);                           // Atualiza o display
-      vTaskDelay(pdMS_TO_TICKS(20));
+      if (counter > 0) {
+        ssd1306_draw_string(&ssd, "Contador  LEDs", 10, 41);
+        ssd1306_draw_string(&ssd, "Modo", 40, 52);
+      }
+
+      if (counter == 0 && is_night_mode) {
+        ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
+        ssd1306_draw_string(&ssd, "Modo Noturno", 10, 52);
+        // vTaskDelay(pdMS_TO_TICKS(3000));
+      }
+
+      if (counter == 0 && !is_night_mode) {
+        ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
+        ssd1306_draw_string(&ssd, "Modo Normal", 10, 52);
+        // vTaskDelay(pdMS_TO_TICKS(3000));
+      }
+
+      ssd1306_send_data(&ssd);
   }
 }
 
@@ -137,8 +154,8 @@ void vBuzzerTask() {
 
   while (true) {
     if (is_night_mode) {
-      buzzer_freq = 100.0f;
-      // buzzer_freq = 8000.0f;
+      // buzzer_freq = 100.0f;
+      buzzer_freq = 0.0f;
 
       // Cálculos para configuração do PWM
       uint32_t divider = clock / (uint32_t)(buzzer_freq * 1000);
@@ -149,13 +166,15 @@ void vBuzzerTask() {
       pwm_set_wrap(slice_num, wrap);
       pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
 
-      // Ligado
-      pwm_set_enabled(slice_num, true);
-      vTaskDelay(pdMS_TO_TICKS(2000));
+      if (counter > 0) {
+        // Ligado
+        pwm_set_enabled(slice_num, true);
+        vTaskDelay(pdMS_TO_TICKS(2000));
 
-      // Desligado
-      pwm_set_enabled(slice_num, false);
-      vTaskDelay(pdMS_TO_TICKS(2000));
+        // Desligado
+        pwm_set_enabled(slice_num, false);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+      }
     } else {
       pwm_set_enabled(slice_num, false);
       // gpio_put(BUZZER_PIN, 0);
@@ -167,16 +186,16 @@ void vButtonsTask() {
   // define variáveis para debounce do botão
   uint32_t current_time = 0;
 
-  // Iniciliza o botão A
-  btn_setup(BTN_A_PIN);
-
   while(true) {
     if (!gpio_get(BTN_A_PIN)) {
       current_time = to_ms_since_boot(get_absolute_time()); // retorna o tempo total em ms desde o boot do rp2040
 
       if (current_time - last_time_btn_press > debounce_delay_ms) {
         last_time_btn_press = current_time;
+        counter = 0;
         is_night_mode = !is_night_mode;
+
+        printf("contador: %d\n", counter);
 
         if (is_night_mode) {
           printf("Modo Atual: Noturno.\n");
@@ -197,25 +216,70 @@ void vLedMatrixTask() {
   // const uint RED_LED_INDEX    = 17;
   // const uint YELLOW_LED_INDEX = 12;
   // const uint GREEN_LED_INDEX  = 7;
-  npClear();
 
-  while (true) {
-    if (is_night_mode) {
-      npSetLED(17, 0, 0, 0);
-      npSetLED(12, 215, 215, 0);
-      npSetLED(7, 0, 0, 0);
-      npWrite();
-      vTaskDelay(pdMS_TO_TICKS(2000));
-      npSetLED(17, 0, 0, 0);
-      npSetLED(12, 0, 0, 0);
-      npSetLED(7, 0, 0, 0);
-      npWrite();
-      vTaskDelay(pdMS_TO_TICKS(2000));
-    } else {
-      npClear();
-      npWrite();
-    }
-  }
+  // while (true) {
+  //   if (is_night_mode) {
+  //     // Entrando no modo noturno
+  //     if (counter == 0) {
+  //       npClear();
+  //       npWrite();
+  //       vTaskDelay(pdMS_TO_TICKS(3000));
+  //       counter++;
+  //     }
+
+  //     printf("contador: %d\n", counter);
+
+  //     npSetLED(17, 0, 0, 0);
+  //     npSetLED(12, 215, 215, 0);
+  //     npSetLED(7, 0, 0, 0);
+  //     // taskENTER_CRITICAL();
+  //     npWrite();
+  //     // taskEXIT_CRITICAL();
+  //     vTaskDelay(pdMS_TO_TICKS(2000));
+  //     npSetLED(17, 0, 0, 0);
+  //     npSetLED(12, 0, 0, 0);
+  //     npSetLED(7, 0, 0, 0);
+  //     // taskENTER_CRITICAL();
+  //     npWrite();
+  //     // taskEXIT_CRITICAL();
+  //     vTaskDelay(pdMS_TO_TICKS(2000));
+  //   } else {
+  //     // Entrando no modo normal
+  //     if (counter == 0) {
+  //       npClear();
+  //       npWrite();
+  //       vTaskDelay(pdMS_TO_TICKS(3000));
+  //       counter++;
+  //     }
+
+  //     printf("contador: %d\n", counter);
+
+  //     npClear();
+  //     npSetLED(17, 0, 0, 0);  // Apagado
+  //     npSetLED(12, 0, 0, 0);  // Apagado
+  //     npSetLED(7, 0, 255, 0); // Aceso
+  //     // taskENTER_CRITICAL();
+  //     npWrite();
+  //     // taskEXIT_CRITICAL();
+  //     vTaskDelay(pdMS_TO_TICKS(10000));
+  //     npClear();
+  //     npSetLED(17, 0, 0, 0);      // Apagado
+  //     npSetLED(12, 255, 255, 0);  // Aceso
+  //     npSetLED(7, 0, 0, 0);       // Apagado
+  //     // taskENTER_CRITICAL();
+  //     npWrite();
+  //     // taskEXIT_CRITICAL();
+  //     vTaskDelay(pdMS_TO_TICKS(4000));
+  //     npClear();
+  //     npSetLED(17, 255, 0, 0); // Aceso
+  //     npSetLED(12, 0, 0, 0);   // Apagado
+  //     npSetLED(7, 0, 0, 0);    // Apagado
+  //     // taskENTER_CRITICAL();
+  //     npWrite();
+  //     // taskEXIT_CRITICAL();
+  //     vTaskDelay(pdMS_TO_TICKS(10000));
+  //   }
+  // }
 }
 
 void vLEDsRGBTask() {
@@ -223,11 +287,99 @@ void vLEDsRGBTask() {
   led_rgb_setup(LED_GREEN);
   led_rgb_setup(LED_BLUE);
 
+  const TickType_t step = pdMS_TO_TICKS(STEP_MS);
+  const int stepsPer = 2000 / STEP_MS;
+
   while (true) {
     if (is_night_mode) {
+      // Entrando no modo noturno
+      if (counter == 0) {
+        gpio_put(LED_RED, false);
+        gpio_put(LED_GREEN, false);
+        gpio_put(LED_BLUE, false);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        counter++;
+      }
+
+      printf("contador: %d\n", counter);
+
+      // Night ON phase (2 s total)
+      gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, true);
-    } else {
+      for (int i = 0; i < stepsPer; ++i) {
+          if (!is_night_mode) break;    // abort if mode changed
+          vTaskDelay(step);
+      }
+      if (!is_night_mode) continue;     // re‐eval mode
+
+      // Night OFF phase (2 s total)
+      gpio_put(LED_RED,   false);
       gpio_put(LED_GREEN, false);
+      for (int i = 0; i < stepsPer; ++i) {
+          if (!is_night_mode) break;
+          vTaskDelay(step);
+      }
+    } else {
+      // Entrando no modo normal
+      if (counter == 0) {
+        gpio_put(LED_RED, false);
+        gpio_put(LED_GREEN, false);
+        gpio_put(LED_BLUE, false);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        counter++;
+      }
+
+      printf("contador: %d\n", counter);
+
+      // Green for  8 s
+      gpio_put(LED_RED,   false);
+      gpio_put(LED_GREEN, true);
+      for (int ms = 0; ms < 8000; ms += STEP_MS) {
+          if (is_night_mode) break;    // abort early
+          vTaskDelay(step);
+      }
+      if (is_night_mode) continue;
+
+      // Yellow for 4 s
+      gpio_put(LED_RED,   true);
+      gpio_put(LED_GREEN, true);
+      for (int ms = 0; ms < 4000; ms += STEP_MS) {
+          if (is_night_mode) break;
+          vTaskDelay(step);
+      }
+      if (is_night_mode) continue;
+
+      // Red for 8 s
+      gpio_put(LED_RED,   true);
+      gpio_put(LED_GREEN, false);
+      for (int ms = 0; ms < 8000; ms += STEP_MS) {
+          if (is_night_mode) break;
+          vTaskDelay(step);
+      }// Green for  8 s
+      gpio_put(LED_RED,   false);
+      gpio_put(LED_GREEN, true);
+      for (int ms = 0; ms < 8000; ms += STEP_MS) {
+          if (is_night_mode) break;    // abort early
+          vTaskDelay(step);
+      }
+      if (is_night_mode) continue;
+
+      // Yellow for 4 s
+      gpio_put(LED_RED,   true);
+      gpio_put(LED_GREEN, true);
+      for (int ms = 0; ms < 4000; ms += STEP_MS) {
+          if (is_night_mode) break;
+          vTaskDelay(step);
+      }
+      if (is_night_mode) continue;
+
+      // Red for 8 s
+      gpio_put(LED_RED,   true);
+      gpio_put(LED_GREEN, false);
+      for (int ms = 0; ms < 8000; ms += STEP_MS) {
+          if (is_night_mode) break;
+          vTaskDelay(step);
+      }
     }
   }
 }
@@ -240,16 +392,18 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     last_time_btn_press = current_time;
 
     if (gpio == BTN_A_PIN) {
-      // is_night_mode = !is_night_mode;
+      counter = 0;
+      is_night_mode = !is_night_mode;
 
-      // if (is_night_mode) {
-      //   printf("Modo Atual: Noturno.\n");
-      // } else {
-      //   printf("Modo Atual: Normal.\n");
-      // }
-        printf("btn A pressionado\n");
+      printf("contador: %d\n", counter);
+
+      if (is_night_mode) {
+        printf("Modo Atual: Noturno.\n");
+      } else {
+        printf("Modo Atual: Normal.\n");
+      }
     } else if (gpio == BTN_B_PIN) {
-      reset_usb_boot(0, 0);
+        reset_usb_boot(0, 0);
     }
   }
 }
@@ -259,16 +413,17 @@ int main() {
 
   // Inicilização dos botões
   btn_setup(BTN_B_PIN);
+  btn_setup(BTN_A_PIN);
 
   // Inicilização das interrupções para os botões
   gpio_set_irq_enabled_with_callback(BTN_B_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-  // gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_FALL, true);
+  gpio_set_irq_enabled(BTN_A_PIN, GPIO_IRQ_EDGE_FALL, true);
 
   // Criação das tarefas
   xTaskCreate(vDisplayTask, "Task: Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vButtonsTask, "Task: Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  // xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  // xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  // xTaskCreate(vButtonsTask, "Task: Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vLEDsRGBTask, "Task: LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
