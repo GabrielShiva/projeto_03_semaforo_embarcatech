@@ -124,29 +124,29 @@ void vDisplayTask() {
 
     if (counter > 0) {
       if (traffic_light_step == 0) {
-        ssd1306_draw_string(&ssd, "Passagem", 10, 41);
-        ssd1306_draw_string(&ssd, "Permitida", 10, 52);
+        ssd1306_draw_string(&ssd, "Passagem", 6, 41);
+        ssd1306_draw_string(&ssd, "Permitida", 6, 52);
       }
 
       if (traffic_light_step == 1) {
-        ssd1306_draw_string(&ssd, "Atencao", 10, 41);
+        ssd1306_draw_string(&ssd, "Atencao", 6, 41);
       }
 
       if (traffic_light_step == 2) {
-        ssd1306_draw_string(&ssd, "Passagem", 10, 41);
-        ssd1306_draw_string(&ssd, "Proibida", 10, 52);
+        ssd1306_draw_string(&ssd, "Passagem", 6, 41);
+        ssd1306_draw_string(&ssd, "Proibida", 6, 52);
       }
     }
 
     if (counter == 0 && is_night_mode) {
-      ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
-      ssd1306_draw_string(&ssd, "Modo Noturno", 10, 52);
+      ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
+      ssd1306_draw_string(&ssd, "Modo Noturno", 6, 52);
       // vTaskDelay(pdMS_TO_TICKS(3000));
     }
 
     if (counter == 0 && !is_night_mode) {
-      ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
-      ssd1306_draw_string(&ssd, "Modo Normal", 10, 52);
+      ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
+      ssd1306_draw_string(&ssd, "Modo Normal", 6, 52);
       // vTaskDelay(pdMS_TO_TICKS(3000));
     }
 
@@ -439,7 +439,7 @@ int main() {
   // Criação das tarefas
   xTaskCreate(vDisplayTask, "Task: Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  // xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vLEDsRGBTask, "Task: LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
