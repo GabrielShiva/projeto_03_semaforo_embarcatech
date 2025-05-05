@@ -37,6 +37,14 @@ const uint32_t debounce_delay_ms = 260;
 // define variável global para trocar modo de operação (NORMAL e NOTURNO)
 volatile bool is_night_mode = false;
 volatile uint counter = 0;
+volatile uint traffic_light_step = 0; // 0=>verde ; 1=>amarelo ; 2=>vermelho
+
+// pwm
+uint32_t clock   = 125000000;
+uint32_t divider = 0;
+uint32_t wrap    = 0;
+uint slice_num   = 0;
+uint channel_num = 0;
 
 void btn_setup(uint gpio) {
   gpio_init(gpio);
@@ -58,6 +66,21 @@ void i2c_setup(uint baud_in_kilo) {
   gpio_pull_up(I2C_SCL);
 }
 
+void pwm_set_frequency(float frequency) {
+  if (frequency <= 0.0f) {
+    pwm_set_enabled(slice_num, false);
+    return;
+  }
+
+  divider = clock / (uint32_t)(frequency * 1000);
+  wrap    = clock / (divider * (uint32_t)frequency) - 1;
+
+  // Aplica as configurações
+  pwm_set_clkdiv_int_frac(slice_num, divider, 0);
+  pwm_set_wrap(slice_num, wrap);
+  pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
+}
+
 void ssd1306_setup(ssd1306_t *ssd_ptr) {
   ssd1306_init(ssd_ptr, WIDTH, HEIGHT, false, SSD1306_ADDRESS, I2C_PORT); // Inicializa o display
   ssd1306_config(ssd_ptr);                                                // Configura o display
@@ -66,27 +89,6 @@ void ssd1306_setup(ssd1306_t *ssd_ptr) {
   // Limpa o display. O display inicia com todos os pixels apagados.
   ssd1306_fill(ssd_ptr, false);
   ssd1306_send_data(ssd_ptr);
-}
-
-void define_buzzer_state() {
-    // // Cálculos para configuração do PWM
-    // uint32_t clock = 125000000; // Clock base de 125MHz
-    // uint32_t divider = 125000000 / (uint32_t)(buzzer_freq * 1000);
-    // uint32_t wrap = 125000000 / (divider * (uint32_t)buzzer_freq) - 1;
-
-    // // Aplica as configurações
-    // pwm_set_clkdiv_int_frac(slice_num, divider, 0);
-    // pwm_set_wrap(slice_num, wrap);
-    // pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
-    // pwm_set_enabled(slice_num, true);
-
-    // if (is_night_mode) {
-    //   // Ligado
-    //   vTaskDelay(pdMS_TO_TICKS(2000));
-
-    //   // Desligado
-    //   vTaskDelay(pdMS_TO_TICKS(2000));
-    // }
 }
 
 void vDisplayTask() {
@@ -101,116 +103,166 @@ void vDisplayTask() {
   char display_text[20] = {0};
 
   while (true) {
-      ssd1306_fill(&ssd, !color); // Limpa o display
-      ssd1306_rect(&ssd, 3, 3, 122, 60, color, !color);
-      ssd1306_line(&ssd, 3, 15, 123, 15, color);
-      ssd1306_line(&ssd, 3, 27, 123, 27, color);
-      ssd1306_draw_string(&ssd, "SEMAFORO", 32, 6);
+    ssd1306_fill(&ssd, !color); // Limpa o display
+    ssd1306_rect(&ssd, 3, 3, 122, 60, color, !color);
+    ssd1306_line(&ssd, 3, 15, 123, 15, color);
+    ssd1306_line(&ssd, 3, 27, 123, 27, color);
+    ssd1306_draw_string(&ssd, "SEMAFORO", 32, 6);
 
-      if (is_night_mode) {
-        ssd1306_draw_string(&ssd, "MODO: NOTURNO", 6, 18);
-      } else {
-        ssd1306_draw_string(&ssd, "MODO: NORMAL", 6, 18);
+    if (is_night_mode) {
+      ssd1306_draw_string(&ssd, "MODO: NOTURNO", 6, 18);
+    } else {
+      ssd1306_draw_string(&ssd, "MODO: NORMAL", 6, 18);
+    }
+
+    if (counter > 0) {
+      if (traffic_light_step == 0) {
+        ssd1306_draw_string(&ssd, "Passagem", 10, 41);
+        ssd1306_draw_string(&ssd, "Permitida", 10, 52);
       }
 
-      if (counter > 0) {
-        ssd1306_draw_string(&ssd, "Contador  LEDs", 10, 41);
-        ssd1306_draw_string(&ssd, "Modo", 40, 52);
+      if (traffic_light_step == 1) {
+        ssd1306_draw_string(&ssd, "Atencao", 10, 41);
       }
 
-      if (counter == 0 && is_night_mode) {
-        ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
-        ssd1306_draw_string(&ssd, "Modo Noturno", 10, 52);
-        // vTaskDelay(pdMS_TO_TICKS(3000));
+      if (traffic_light_step == 1) {
+        ssd1306_draw_string(&ssd, "Passagem", 10, 41);
+        ssd1306_draw_string(&ssd, "Proibida", 10, 52);
       }
+    }
 
-      if (counter == 0 && !is_night_mode) {
-        ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
-        ssd1306_draw_string(&ssd, "Modo Normal", 10, 52);
-        // vTaskDelay(pdMS_TO_TICKS(3000));
-      }
+    if (counter == 0 && is_night_mode) {
+      ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
+      ssd1306_draw_string(&ssd, "Modo Noturno", 10, 52);
+      // vTaskDelay(pdMS_TO_TICKS(3000));
+    }
 
-      ssd1306_send_data(&ssd);
+    if (counter == 0 && !is_night_mode) {
+      ssd1306_draw_string(&ssd, "INICIALIZANDO", 10, 41);
+      ssd1306_draw_string(&ssd, "Modo Normal", 10, 52);
+      // vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+
+    ssd1306_send_data(&ssd);
   }
 }
 
 void vBuzzerTask() {
-  float buzzer_freq = 0.0f;
-
   // Configura o pino do buzzer para PWM e obtém as infos do pino
   gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
-  uint slice_num   = pwm_gpio_to_slice_num(BUZZER_PIN);
-  uint channel_num = pwm_gpio_to_channel(BUZZER_PIN);
+  slice_num   = pwm_gpio_to_slice_num(BUZZER_PIN);
+  channel_num = pwm_gpio_to_channel(BUZZER_PIN);
 
   // Configuração inicial do PWM
   pwm_config config = pwm_get_default_config();
   pwm_init(slice_num, &config, true);
   pwm_set_enabled(slice_num, false); // desliga PWM do pino ligado ao buzzer
 
-  // Inicilização de variáveis para cálculo do PWM
-  uint32_t clock   = 125000000;
-  uint32_t divider = 0;
-  uint32_t wrap    = 0;
-
   const TickType_t step = pdMS_TO_TICKS(STEP_MS);
   const int stepsPer = 2000 / STEP_MS;
 
   while (true) {
     if (is_night_mode) {
-      buzzer_freq = 100.0f;
-      // buzzer_freq = 0.0f;
-
       // Cálculos para configuração do PWM
-      uint32_t divider = clock / (uint32_t)(buzzer_freq * 1000);
-      uint32_t wrap    = clock / (divider * (uint32_t)buzzer_freq) - 1;
-
-      // Aplica as configurações
-      pwm_set_clkdiv_int_frac(slice_num, divider, 0);
-      pwm_set_wrap(slice_num, wrap);
-      pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
+      pwm_set_frequency(100.0f);
 
       if (counter > 0) {
         // Ligado
         pwm_set_enabled(slice_num, true);
-        for (int i = 0; i < stepsPer; ++i) {
-          if (!is_night_mode) break;    // abort if mode changed
+        for (int i = 0; i < stepsPer; i++) {
+          if (!is_night_mode) {
+            pwm_set_enabled(slice_num, false);
+            break;
+          }
           vTaskDelay(step);
         }
-        if (!is_night_mode) continue;     // re‐eval mode
+        if (!is_night_mode) continue;
 
         // Desligado
         pwm_set_enabled(slice_num, false);
-        for (int i = 0; i < stepsPer; ++i) {
-          if (!is_night_mode) break;
+        for (int i = 0; i < stepsPer; i++) {
+          if (!is_night_mode) {
+            pwm_set_enabled(slice_num, false);
+            break;
+          }
           vTaskDelay(step);
         }
       }
     } else {
-      pwm_set_enabled(slice_num, false);
-      // gpio_put(BUZZER_PIN, 0);
-    }
-  }
-}
+      if (counter > 0) {
+        // Verde (8 segundos)
+        if (traffic_light_step == 0) {
+          pwm_set_frequency(200.0f);
 
-void vButtonsTask() {
-  // define variáveis para debounce do botão
-  uint32_t current_time = 0;
+          // ligado
+          pwm_set_enabled(slice_num, true);
+          for (int ms = 0; ms < 1000; ms += STEP_MS) {
+            if (is_night_mode) {
+              pwm_set_enabled(slice_num, false);  // ← immediate off
+              break;
+            }
+            vTaskDelay(step);
+          }
 
-  while(true) {
-    if (!gpio_get(BTN_A_PIN)) {
-      current_time = to_ms_since_boot(get_absolute_time()); // retorna o tempo total em ms desde o boot do rp2040
+          // desligado
+          pwm_set_enabled(slice_num, false);
+          for (int ms = 0; ms < 7000; ms += STEP_MS) {
+            if (is_night_mode) {
+              pwm_set_enabled(slice_num, false);  // ← immediate off
+              break;
+            }
+            vTaskDelay(step);
+          }
+        }
 
-      if (current_time - last_time_btn_press > debounce_delay_ms) {
-        last_time_btn_press = current_time;
-        counter = 0;
-        is_night_mode = !is_night_mode;
+        // Amarelo (4 segundos)
+        if (traffic_light_step == 1) {
+          pwm_set_frequency(100.0f); // Define a frequência
 
-        printf("contador: %d\n", counter);
+          // ligado
+          pwm_set_enabled(slice_num, true);
+          for (int ms = 0; ms < 500; ms += STEP_MS) {
+            if (is_night_mode) {
+              pwm_set_enabled(slice_num, false);  // ← immediate off
+              break;
+            }
+            vTaskDelay(step);
+          }
 
-        if (is_night_mode) {
-          printf("Modo Atual: Noturno.\n");
-        } else {
-          printf("Modo Atual: Normal.\n");
+          // desligado
+          pwm_set_enabled(slice_num, false);
+          for (int ms = 0; ms < 500; ms += STEP_MS) {
+            if (is_night_mode) {
+              pwm_set_enabled(slice_num, false);  // ← immediate off
+              break;
+            }
+            vTaskDelay(step);
+          }
+        }
+
+        // Vermelho (8 segundos)
+        if (traffic_light_step == 2) {
+          pwm_set_frequency(500.0f); // Define a frequência
+
+          // ligado
+          pwm_set_enabled(slice_num, true);
+          for (int ms = 0; ms < 500; ms += STEP_MS) {
+            if (is_night_mode) {
+              pwm_set_enabled(slice_num, false);  // ← immediate off
+              break;
+            }
+            vTaskDelay(step);
+          }
+
+          // desligado
+          pwm_set_enabled(slice_num, false);
+          for (int ms = 0; ms < 1500; ms += STEP_MS) {
+            if (is_night_mode) {
+              pwm_set_enabled(slice_num, false);  // ← immediate off
+              break;
+            }
+            vTaskDelay(step);
+          }
         }
       }
     }
@@ -341,16 +393,18 @@ void vLEDsRGBTask() {
 
       printf("contador: %d\n", counter);
 
-      // Green for  8 s
+      // Verde por 8s
+      traffic_light_step = 0;
       gpio_put(LED_RED,   false);
       gpio_put(LED_GREEN, true);
       for (int ms = 0; ms < 8000; ms += STEP_MS) {
-          if (is_night_mode) break;    // abort early
+          if (is_night_mode) break;
           vTaskDelay(step);
       }
       if (is_night_mode) continue;
 
-      // Yellow for 4 s
+      // Amarelo por 4s
+      traffic_light_step = 1;
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, true);
       for (int ms = 0; ms < 4000; ms += STEP_MS) {
@@ -359,31 +413,8 @@ void vLEDsRGBTask() {
       }
       if (is_night_mode) continue;
 
-      // Red for 8 s
-      gpio_put(LED_RED,   true);
-      gpio_put(LED_GREEN, false);
-      for (int ms = 0; ms < 8000; ms += STEP_MS) {
-          if (is_night_mode) break;
-          vTaskDelay(step);
-      }// Green for  8 s
-      gpio_put(LED_RED,   false);
-      gpio_put(LED_GREEN, true);
-      for (int ms = 0; ms < 8000; ms += STEP_MS) {
-          if (is_night_mode) break;    // abort early
-          vTaskDelay(step);
-      }
-      if (is_night_mode) continue;
-
-      // Yellow for 4 s
-      gpio_put(LED_RED,   true);
-      gpio_put(LED_GREEN, true);
-      for (int ms = 0; ms < 4000; ms += STEP_MS) {
-          if (is_night_mode) break;
-          vTaskDelay(step);
-      }
-      if (is_night_mode) continue;
-
-      // Red for 8 s
+      // Vermelho por 8s
+      traffic_light_step = 2;
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, false);
       for (int ms = 0; ms < 8000; ms += STEP_MS) {
@@ -404,6 +435,8 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     if (gpio == BTN_A_PIN) {
       counter = 0;
       is_night_mode = !is_night_mode;
+      traffic_light_step = 0;
+      pwm_set_enabled(slice_num, false);
 
       printf("contador: %d\n", counter);
 
@@ -433,7 +466,6 @@ int main() {
   xTaskCreate(vDisplayTask, "Task: Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   // xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  // xTaskCreate(vButtonsTask, "Task: Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vLEDsRGBTask, "Task: LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
