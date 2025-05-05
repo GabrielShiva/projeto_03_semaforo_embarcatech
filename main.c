@@ -45,6 +45,13 @@ uint32_t divider = 0;
 uint32_t wrap    = 0;
 uint slice_num   = 0;
 uint channel_num = 0;
+uint ledsMatrixCounter = 0;
+
+void setMatrixColor() {
+  for (uint i = 0; i < LED_COUNT; ++i) {
+    npSetLED(i, 255, 255, 255);
+  }
+}
 
 void btn_setup(uint gpio) {
   gpio_init(gpio);
@@ -125,7 +132,7 @@ void vDisplayTask() {
         ssd1306_draw_string(&ssd, "Atencao", 10, 41);
       }
 
-      if (traffic_light_step == 1) {
+      if (traffic_light_step == 2) {
         ssd1306_draw_string(&ssd, "Passagem", 10, 41);
         ssd1306_draw_string(&ssd, "Proibida", 10, 52);
       }
@@ -274,74 +281,36 @@ void vLedMatrixTask() {
   npClear();
   npWrite();
 
-  // Define as posições dos LEDs do semáforo
-  // const uint RED_LED_INDEX    = 17;
-  // const uint YELLOW_LED_INDEX = 12;
-  // const uint GREEN_LED_INDEX  = 7;
+  const TickType_t step = pdMS_TO_TICKS(STEP_MS);
+  const uint stepsPer = 2000 / STEP_MS;
 
-  // while (true) {
-  //   if (is_night_mode) {
-  //     // Entrando no modo noturno
-  //     if (counter == 0) {
-  //       npClear();
-  //       npWrite();
-  //       vTaskDelay(pdMS_TO_TICKS(3000));
-  //       counter++;
-  //     }
+  while (true) {
+    if (!is_night_mode) {
+      if (counter > 0 && traffic_light_step == 0 && ledsMatrixCounter < 4) {
+        // Liga
+        setMatrixColor();
+        npWrite();
+        for (int ms = 0; ms < 200; ms += STEP_MS) {
+          if (is_night_mode) {
+            break;
+          }
+          vTaskDelay(step);
+        }
 
-  //     printf("contador: %d\n", counter);
+        // Desliga
+        npClear();
+        npWrite();
+        for (int ms = 0; ms < 200; ms += STEP_MS) {
+          if (is_night_mode) {
+            break;
+          }
+          vTaskDelay(step);
+        }
 
-  //     npSetLED(17, 0, 0, 0);
-  //     npSetLED(12, 215, 215, 0);
-  //     npSetLED(7, 0, 0, 0);
-  //     // taskENTER_CRITICAL();
-  //     npWrite();
-  //     // taskEXIT_CRITICAL();
-  //     vTaskDelay(pdMS_TO_TICKS(2000));
-  //     npSetLED(17, 0, 0, 0);
-  //     npSetLED(12, 0, 0, 0);
-  //     npSetLED(7, 0, 0, 0);
-  //     // taskENTER_CRITICAL();
-  //     npWrite();
-  //     // taskEXIT_CRITICAL();
-  //     vTaskDelay(pdMS_TO_TICKS(2000));
-  //   } else {
-  //     // Entrando no modo normal
-  //     if (counter == 0) {
-  //       npClear();
-  //       npWrite();
-  //       vTaskDelay(pdMS_TO_TICKS(3000));
-  //       counter++;
-  //     }
-
-  //     printf("contador: %d\n", counter);
-
-  //     npClear();
-  //     npSetLED(17, 0, 0, 0);  // Apagado
-  //     npSetLED(12, 0, 0, 0);  // Apagado
-  //     npSetLED(7, 0, 255, 0); // Aceso
-  //     // taskENTER_CRITICAL();
-  //     npWrite();
-  //     // taskEXIT_CRITICAL();
-  //     vTaskDelay(pdMS_TO_TICKS(10000));
-  //     npClear();
-  //     npSetLED(17, 0, 0, 0);      // Apagado
-  //     npSetLED(12, 255, 255, 0);  // Aceso
-  //     npSetLED(7, 0, 0, 0);       // Apagado
-  //     // taskENTER_CRITICAL();
-  //     npWrite();
-  //     // taskEXIT_CRITICAL();
-  //     vTaskDelay(pdMS_TO_TICKS(4000));
-  //     npClear();
-  //     npSetLED(17, 255, 0, 0); // Aceso
-  //     npSetLED(12, 0, 0, 0);   // Apagado
-  //     npSetLED(7, 0, 0, 0);    // Apagado
-  //     // taskENTER_CRITICAL();
-  //     npWrite();
-  //     // taskEXIT_CRITICAL();
-  //     vTaskDelay(pdMS_TO_TICKS(10000));
-  //   }
-  // }
+        ledsMatrixCounter++;
+      }
+    }
+  }
 }
 
 void vLEDsRGBTask() {
@@ -415,6 +384,7 @@ void vLEDsRGBTask() {
 
       // Vermelho por 8s
       traffic_light_step = 2;
+      ledsMatrixCounter = 0;
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, false);
       for (int ms = 0; ms < 8000; ms += STEP_MS) {
@@ -436,7 +406,11 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
       counter = 0;
       is_night_mode = !is_night_mode;
       traffic_light_step = 0;
+      ledsMatrixCounter = 0;
       pwm_set_enabled(slice_num, false);
+
+      npClear();
+      npWrite();
 
       printf("contador: %d\n", counter);
 
@@ -464,8 +438,8 @@ int main() {
 
   // Criação das tarefas
   xTaskCreate(vDisplayTask, "Task: Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  // xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-  xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(vLedMatrixTask, "Task: LEDs Matriz", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+  // xTaskCreate(vBuzzerTask, "Task: Buzzer", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
   xTaskCreate(vLEDsRGBTask, "Task: LEDs RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
   // Chamda do Scheduller de tarefas
