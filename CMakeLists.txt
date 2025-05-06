@@ -1,17 +1,3 @@
-# == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
-if(WIN32)
-    set(USERHOME $ENV{USERPROFILE})
-else()
-    set(USERHOME $ENV{HOME})
-endif()
-set(sdkVersion 2.1.0)
-set(toolchainVersion 13_3_Rel1)
-set(picotoolVersion 2.1.0)
-set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
-if (EXISTS ${picoVscode})
-    include(${picoVscode})
-endif()
-# ====================================================================================
 
 
 
@@ -27,14 +13,12 @@ include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/GCC/RP2040/FreeRTOS_Kernel_i
 project(ProjetoSemaforo C CXX ASM)
 pico_sdk_init()
 
-
 include_directories(${CMAKE_SOURCE_DIR}/lib)
-
 
 add_executable(${PROJECT_NAME}
         main.c
         lib/ssd1306.c # Biblioteca para o display OLED
-        )
+      )
 
 pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/ws2818b.pio)
 
@@ -49,7 +33,7 @@ target_link_libraries(${PROJECT_NAME}
         hardware_clocks
         FreeRTOS-Kernel
         FreeRTOS-Kernel-Heap4
-        )
+      )
 
 pico_enable_stdio_usb(${PROJECT_NAME} 1)
 pico_enable_stdio_uart(${PROJECT_NAME} 0)
