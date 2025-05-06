@@ -98,6 +98,44 @@ void ssd1306_setup(ssd1306_t *ssd_ptr) {
   ssd1306_send_data(ssd_ptr);
 }
 
+void buzzer_set_delay(uint delay_ms, uint slice, bool is_for_night_mode) {
+  if (is_for_night_mode) {
+    for (int i = 0; i < delay_ms; i += STEP_MS) {
+      if (!is_night_mode) {
+        pwm_set_enabled(slice, false);
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+    }
+  } else {
+    for (int i = 0; i < delay_ms; i += STEP_MS) {
+      if (is_night_mode) {
+        pwm_set_enabled(slice, false);
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+    }
+  }
+}
+
+void leds_set_delay(uint delay_ms, bool is_for_night_mode) {
+  if (is_for_night_mode) {
+    for (int i = 0; i < delay_ms; i += STEP_MS) {
+      if (!is_night_mode) {
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+    }
+  } else {
+    for (int i = 0; i < delay_ms; i += STEP_MS) {
+      if (is_night_mode) {
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+    }
+  }
+}
+
 void vDisplayTask() {
   // Inicialização do protocolo I2C com 400Khz
   i2c_setup(400);
@@ -106,11 +144,10 @@ void vDisplayTask() {
   ssd1306_t ssd;
   ssd1306_setup(&ssd);
 
-  bool color              = true;
-  char display_text[20] = {0};
+  bool color = true;
 
   while (true) {
-    ssd1306_fill(&ssd, !color); // Limpa o display
+    ssd1306_fill(&ssd, !color);
     ssd1306_rect(&ssd, 3, 3, 122, 60, color, !color);
     ssd1306_line(&ssd, 3, 15, 123, 15, color);
     ssd1306_line(&ssd, 3, 27, 123, 27, color);
@@ -118,36 +155,40 @@ void vDisplayTask() {
 
     if (is_night_mode) {
       ssd1306_draw_string(&ssd, "MODO: NOTURNO", 6, 18);
-    } else {
-      ssd1306_draw_string(&ssd, "MODO: NORMAL", 6, 18);
-    }
 
-    if (counter > 0) {
-      if (traffic_light_step == 0) {
-        ssd1306_draw_string(&ssd, "Passagem", 6, 41);
-        ssd1306_draw_string(&ssd, "Permitida", 6, 52);
+      if (counter == 0) {
+        ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
+        ssd1306_draw_string(&ssd, "Modo Noturno", 6, 52);
       }
 
-      if (traffic_light_step == 1) {
+      if (counter > 0) {
         ssd1306_draw_string(&ssd, "Atencao", 6, 41);
       }
+    }
 
-      if (traffic_light_step == 2) {
-        ssd1306_draw_string(&ssd, "Passagem", 6, 41);
-        ssd1306_draw_string(&ssd, "Proibida", 6, 52);
+    if (!is_night_mode) {
+      ssd1306_draw_string(&ssd, "MODO: NORMAL", 6, 18);
+
+      if (counter == 0) {
+        ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
+        ssd1306_draw_string(&ssd, "Modo Normal", 6, 52);
       }
-    }
 
-    if (counter == 0 && is_night_mode) {
-      ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
-      ssd1306_draw_string(&ssd, "Modo Noturno", 6, 52);
-      // vTaskDelay(pdMS_TO_TICKS(3000));
-    }
+      if (counter > 0) {
+        if (traffic_light_step == 0) {
+          ssd1306_draw_string(&ssd, "Passagem", 6, 41);
+          ssd1306_draw_string(&ssd, "Permitida", 6, 52);
+        }
 
-    if (counter == 0 && !is_night_mode) {
-      ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
-      ssd1306_draw_string(&ssd, "Modo Normal", 6, 52);
-      // vTaskDelay(pdMS_TO_TICKS(3000));
+        if (traffic_light_step == 1) {
+          ssd1306_draw_string(&ssd, "Atencao", 6, 41);
+        }
+
+        if (traffic_light_step == 2) {
+          ssd1306_draw_string(&ssd, "Passagem", 6, 41);
+          ssd1306_draw_string(&ssd, "Proibida", 6, 52);
+        }
+      }
     }
 
     ssd1306_send_data(&ssd);
@@ -163,10 +204,9 @@ void vBuzzerTask() {
   // Configuração inicial do PWM
   pwm_config config = pwm_get_default_config();
   pwm_init(slice_num, &config, true);
-  pwm_set_enabled(slice_num, false); // desliga PWM do pino ligado ao buzzer
 
-  const TickType_t step = pdMS_TO_TICKS(STEP_MS);
-  const int stepsPer = 2000 / STEP_MS;
+  // Desliga PWM do pino ligado ao buzzer
+  pwm_set_enabled(slice_num, false);
 
   while (true) {
     if (is_night_mode) {
@@ -176,24 +216,11 @@ void vBuzzerTask() {
       if (counter > 0) {
         // Ligado
         pwm_set_enabled(slice_num, true);
-        for (int i = 0; i < stepsPer; i++) {
-          if (!is_night_mode) {
-            pwm_set_enabled(slice_num, false);
-            break;
-          }
-          vTaskDelay(step);
-        }
-        if (!is_night_mode) continue;
+        buzzer_set_delay(2000, slice_num, true);
 
         // Desligado
         pwm_set_enabled(slice_num, false);
-        for (int i = 0; i < stepsPer; i++) {
-          if (!is_night_mode) {
-            pwm_set_enabled(slice_num, false);
-            break;
-          }
-          vTaskDelay(step);
-        }
+        buzzer_set_delay(2000, slice_num, true);
       }
     } else {
       if (counter > 0) {
@@ -201,75 +228,39 @@ void vBuzzerTask() {
         if (traffic_light_step == 0) {
           pwm_set_frequency(200.0f);
 
-          // ligado
+          // Ligado
           pwm_set_enabled(slice_num, true);
-          for (int ms = 0; ms < 1000; ms += STEP_MS) {
-            if (is_night_mode) {
-              pwm_set_enabled(slice_num, false);  // ← immediate off
-              break;
-            }
-            vTaskDelay(step);
-          }
+          buzzer_set_delay(1000, slice_num, false);
 
-          // desligado
+          // Desligado
           pwm_set_enabled(slice_num, false);
-          for (int ms = 0; ms < 7000; ms += STEP_MS) {
-            if (is_night_mode) {
-              pwm_set_enabled(slice_num, false);  // ← immediate off
-              break;
-            }
-            vTaskDelay(step);
-          }
+          buzzer_set_delay(7000, slice_num, false);
         }
 
         // Amarelo (4 segundos)
         if (traffic_light_step == 1) {
           pwm_set_frequency(100.0f); // Define a frequência
 
-          // ligado
+          // Ligado
           pwm_set_enabled(slice_num, true);
-          for (int ms = 0; ms < 500; ms += STEP_MS) {
-            if (is_night_mode) {
-              pwm_set_enabled(slice_num, false);  // ← immediate off
-              break;
-            }
-            vTaskDelay(step);
-          }
+          buzzer_set_delay(500, slice_num, false);
 
-          // desligado
+          // Desligado
           pwm_set_enabled(slice_num, false);
-          for (int ms = 0; ms < 500; ms += STEP_MS) {
-            if (is_night_mode) {
-              pwm_set_enabled(slice_num, false);  // ← immediate off
-              break;
-            }
-            vTaskDelay(step);
-          }
+          buzzer_set_delay(500, slice_num, false);
         }
 
         // Vermelho (8 segundos)
         if (traffic_light_step == 2) {
           pwm_set_frequency(500.0f); // Define a frequência
 
-          // ligado
+          // Ligado
           pwm_set_enabled(slice_num, true);
-          for (int ms = 0; ms < 500; ms += STEP_MS) {
-            if (is_night_mode) {
-              pwm_set_enabled(slice_num, false);  // ← immediate off
-              break;
-            }
-            vTaskDelay(step);
-          }
+          buzzer_set_delay(500, slice_num, false);
 
-          // desligado
+          // Desligado
           pwm_set_enabled(slice_num, false);
-          for (int ms = 0; ms < 1500; ms += STEP_MS) {
-            if (is_night_mode) {
-              pwm_set_enabled(slice_num, false);  // ← immediate off
-              break;
-            }
-            vTaskDelay(step);
-          }
+          buzzer_set_delay(1500, slice_num, false);
         }
       }
     }
@@ -290,25 +281,18 @@ void vLedMatrixTask() {
         // Liga
         setMatrixColor();
         npWrite();
-        for (int ms = 0; ms < 200; ms += STEP_MS) {
-          if (is_night_mode) {
-            break;
-          }
-          vTaskDelay(step);
-        }
+        leds_set_delay(200, false);
 
         // Desliga
         npClear();
         npWrite();
-        for (int ms = 0; ms < 200; ms += STEP_MS) {
-          if (is_night_mode) {
-            break;
-          }
-          vTaskDelay(step);
-        }
+        leds_set_delay(200, false);
 
         ledsMatrixCounter++;
       }
+    } else {
+      npClear();
+      npWrite();
     }
   }
 }
@@ -317,9 +301,6 @@ void vLEDsRGBTask() {
   led_rgb_setup(LED_RED);
   led_rgb_setup(LED_GREEN);
   led_rgb_setup(LED_BLUE);
-
-  const TickType_t step = pdMS_TO_TICKS(STEP_MS);
-  const int stepsPer = 2000 / STEP_MS;
 
   while (true) {
     if (is_night_mode) {
@@ -337,19 +318,12 @@ void vLEDsRGBTask() {
       // Night ON phase (2 s total)
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, true);
-      for (int i = 0; i < stepsPer; ++i) {
-          if (!is_night_mode) break;    // abort if mode changed
-          vTaskDelay(step);
-      }
-      if (!is_night_mode) continue;     // re‐eval mode
+      leds_set_delay(2000, true);
 
       // Night OFF phase (2 s total)
       gpio_put(LED_RED,   false);
       gpio_put(LED_GREEN, false);
-      for (int i = 0; i < stepsPer; ++i) {
-          if (!is_night_mode) break;
-          vTaskDelay(step);
-      }
+      leds_set_delay(2000, true);
     } else {
       // Entrando no modo normal
       if (counter == 0) {
@@ -366,31 +340,20 @@ void vLEDsRGBTask() {
       traffic_light_step = 0;
       gpio_put(LED_RED,   false);
       gpio_put(LED_GREEN, true);
-      for (int ms = 0; ms < 8000; ms += STEP_MS) {
-          if (is_night_mode) break;
-          vTaskDelay(step);
-      }
-      if (is_night_mode) continue;
+      leds_set_delay(8000, false);
 
       // Amarelo por 4s
       traffic_light_step = 1;
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, true);
-      for (int ms = 0; ms < 4000; ms += STEP_MS) {
-          if (is_night_mode) break;
-          vTaskDelay(step);
-      }
-      if (is_night_mode) continue;
+      leds_set_delay(4000, false);
 
       // Vermelho por 8s
       traffic_light_step = 2;
       ledsMatrixCounter = 0;
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, false);
-      for (int ms = 0; ms < 8000; ms += STEP_MS) {
-          if (is_night_mode) break;
-          vTaskDelay(step);
-      }
+      leds_set_delay(8000, false);
     }
   }
 }
