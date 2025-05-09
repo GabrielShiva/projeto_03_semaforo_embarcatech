@@ -315,12 +315,12 @@ void vLEDsRGBTask() {
 
       printf("contador: %d\n", counter);
 
-      // Night ON phase (2 s total)
+      // Amarelo por 2s
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, true);
       leds_set_delay(2000, true);
 
-      // Night OFF phase (2 s total)
+      // desligado por 2s
       gpio_put(LED_RED,   false);
       gpio_put(LED_GREEN, false);
       leds_set_delay(2000, true);
