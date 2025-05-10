@@ -28,7 +28,7 @@
 #define LED_GREEN 11
 #define LED_BLUE 12
 
-#define STEP_MS   100   // check every 100 ms
+#define STEP_MS 100
 
 // Define variáveis para debounce dos botões A e B
 volatile uint32_t last_time_btn_press = 0;
@@ -47,23 +47,27 @@ uint slice_num   = 0;
 uint channel_num = 0;
 uint ledsMatrixCounter = 0;
 
+// Define todos o buffer para os LEDs da matriz como brancos
 void setMatrixColor() {
   for (uint i = 0; i < LED_COUNT; ++i) {
     npSetLED(i, 255, 255, 255);
   }
 }
 
+// Realiza a inicialização dos botões
 void btn_setup(uint gpio) {
   gpio_init(gpio);
   gpio_set_dir(gpio, GPIO_IN);
   gpio_pull_up(gpio);
 }
 
+// Realiza a inicialização dos LEDs RGB
 void led_rgb_setup(uint gpio) {
   gpio_init(gpio);
   gpio_set_dir(gpio, GPIO_OUT);
 }
 
+// Realiza a inicialização do protocolo I2C para comunicação com o display OLED
 void i2c_setup(uint baud_in_kilo) {
   i2c_init(I2C_PORT, baud_in_kilo * 1000);
 
@@ -73,21 +77,25 @@ void i2c_setup(uint baud_in_kilo) {
   gpio_pull_up(I2C_SCL);
 }
 
+// Cálculo dos paramêtros do PWM para buzzer emitir frequência especificada
 void pwm_set_frequency(float frequency) {
+  // Se frequência for menor que zero não executa nada
   if (frequency <= 0.0f) {
     pwm_set_enabled(slice_num, false);
     return;
   }
 
+  // Calcula os valores para o divisor e para o wrap
   divider = clock / (uint32_t)(frequency * 1000);
   wrap    = clock / (divider * (uint32_t)frequency) - 1;
 
-  // Aplica as configurações
+  // Aplica as configurações calculados
   pwm_set_clkdiv_int_frac(slice_num, divider, 0);
   pwm_set_wrap(slice_num, wrap);
   pwm_set_chan_level(slice_num, channel_num, wrap / 2); // Define o Duty cycle de 50%
 }
 
+// Realiza a inicialização do display OLED
 void ssd1306_setup(ssd1306_t *ssd_ptr) {
   ssd1306_init(ssd_ptr, WIDTH, HEIGHT, false, SSD1306_ADDRESS, I2C_PORT); // Inicializa o display
   ssd1306_config(ssd_ptr);                                                // Configura o display
@@ -98,44 +106,51 @@ void ssd1306_setup(ssd1306_t *ssd_ptr) {
   ssd1306_send_data(ssd_ptr);
 }
 
+// Aplica o delay para o buzzer em passos e com verificação do estado da flag is_night_mode (evita que a tarefa fique presa no delay).
 void buzzer_set_delay(uint delay_ms, uint slice, bool is_for_night_mode) {
-  if (is_for_night_mode) {
+  if (is_for_night_mode) { // verifica se o modo é noturno. Se sim, executa o bloco abaixo.
+    // Realiza a verificação se a flag de estado do semaforo mudou. Sem sim. Interrompe o loop. Se não, continua a aplicar o delay para o buzzer.
     for (int i = 0; i < delay_ms; i += STEP_MS) {
-      if (!is_night_mode) {
+      if (!is_night_mode) { // se a flag tiver mudado para modo normal, desliga o buzzer e interrompe o for.
         pwm_set_enabled(slice, false);
         break;
       }
-      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS)); // se flag não mudou aplica o delay de 100ms.
     }
   } else {
+    // Realiza a verificação se a flag de estado do semaforo mudou. Sem sim. Interrompe o loop. Se não, continua a aplicar o delay para o buzzer.
     for (int i = 0; i < delay_ms; i += STEP_MS) {
-      if (is_night_mode) {
+      if (is_night_mode) { // se a flag tiver mudado para modo noturno, desliga o buzzer e interrompe o for.
         pwm_set_enabled(slice, false);
         break;
       }
-      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS)); // se flag não mudou aplica o delay de 100ms.
     }
   }
 }
 
+// Aplica o delay para os LEDs RGB (semaforo) em passos e com verificação do estado da flag is_night_mode (evita que a tarefa fique presa no delay).
 void leds_set_delay(uint delay_ms, bool is_for_night_mode) {
-  if (is_for_night_mode) {
+  if (is_for_night_mode) { // verifica se o modo é noturno. Se sim, executa o bloco abaixo.
+    // Realiza a verificação se a flag de estado do semaforo mudou. Sem sim. Interrompe o loop. Se não, continua a aplicar o delay para o LED.
     for (int i = 0; i < delay_ms; i += STEP_MS) {
-      if (!is_night_mode) {
+      if (!is_night_mode) {  // se a flag tiver mudado para modo normal, interrompe o for.
         break;
       }
-      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS)); // se flag não mudou aplica o delay de 100ms.
     }
   } else {
+    // Realiza a verificação se a flag de estado do semaforo mudou. Sem sim. Interrompe o loop. Se não, continua a aplicar o delay para o LED.
     for (int i = 0; i < delay_ms; i += STEP_MS) {
-      if (is_night_mode) {
+      if (is_night_mode) { // se a flag tiver mudado para modo noturno, interrompe o for.
         break;
       }
-      vTaskDelay(pdMS_TO_TICKS(STEP_MS));
+      vTaskDelay(pdMS_TO_TICKS(STEP_MS));  // se flag não mudou aplica o delay de 100ms.
     }
   }
 }
 
+// Implementa a tarefa do display OLED
 void vDisplayTask() {
   // Inicialização do protocolo I2C com 400Khz
   i2c_setup(400);
@@ -147,43 +162,55 @@ void vDisplayTask() {
   bool color = true;
 
   while (true) {
+    // Realiza a limpeza do display e define o layout do display OLED
     ssd1306_fill(&ssd, !color);
     ssd1306_rect(&ssd, 3, 3, 122, 60, color, !color);
     ssd1306_line(&ssd, 3, 15, 123, 15, color);
     ssd1306_line(&ssd, 3, 27, 123, 27, color);
     ssd1306_draw_string(&ssd, "SEMAFORO", 32, 6);
 
+    // Se o modo for noturno, executa o bloco de código abaixo
     if (is_night_mode) {
       ssd1306_draw_string(&ssd, "MODO: NOTURNO", 6, 18);
 
+      // se o usuário pressiona o botão, counter é igual à zero e a mensagem de inicialização do modo é exibida
       if (counter == 0) {
         ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
         ssd1306_draw_string(&ssd, "Modo Noturno", 6, 52);
       }
 
+      // Após o delay de 3s aplicado, a variável counter se torna maior que zero e o sinal começa a operar no modo estabelecido.
+      // Com isso, é exibido a mensagem do sinal amarelo.
       if (counter > 0) {
         ssd1306_draw_string(&ssd, "Atencao", 6, 41);
       }
     }
 
+    // Se o modo for normal, executa o bloco de código abaixo
     if (!is_night_mode) {
       ssd1306_draw_string(&ssd, "MODO: NORMAL", 6, 18);
 
+      // se o usuário pressiona o botão, counter é igual à zero e a mensagem de inicialização do modo é exibida
       if (counter == 0) {
         ssd1306_draw_string(&ssd, "INICIALIZANDO", 6, 41);
         ssd1306_draw_string(&ssd, "Modo Normal", 6, 52);
       }
 
+      // Após o delay de 3s aplicado, a variável counter se torna maior que zero e o sinal começa a operar no modo estabelecido.
       if (counter > 0) {
+
+        // Quando o sinal é verde, traffic_light_step é igual a zero e a mensagem abaixo é exibida
         if (traffic_light_step == 0) {
           ssd1306_draw_string(&ssd, "Passagem", 6, 41);
           ssd1306_draw_string(&ssd, "Permitida", 6, 52);
         }
 
+        // Quando o sinal é verde, traffic_light_step é igual a um e a mensagem abaixo é exibida
         if (traffic_light_step == 1) {
           ssd1306_draw_string(&ssd, "Atencao", 6, 41);
         }
 
+        // Quando o sinal é verde, traffic_light_step é igual a dois e a mensagem abaixo é exibida
         if (traffic_light_step == 2) {
           ssd1306_draw_string(&ssd, "Passagem", 6, 41);
           ssd1306_draw_string(&ssd, "Proibida", 6, 52);
@@ -191,10 +218,12 @@ void vDisplayTask() {
       }
     }
 
+    // Envia os dados armazenados no buffer para o display OLED
     ssd1306_send_data(&ssd);
   }
 }
 
+// Implementa a tarefa do buzzer
 void vBuzzerTask() {
   // Configura o pino do buzzer para PWM e obtém as infos do pino
   gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
@@ -209,10 +238,11 @@ void vBuzzerTask() {
   pwm_set_enabled(slice_num, false);
 
   while (true) {
-    if (is_night_mode) {
+    if (is_night_mode) { // verifica se o modo é noturno
       // Cálculos para configuração do PWM
       pwm_set_frequency(100.0f);
 
+      // verifica se já se passaram os 3 segundos
       if (counter > 0) {
         // Ligado
         pwm_set_enabled(slice_num, true);
@@ -223,6 +253,7 @@ void vBuzzerTask() {
         buzzer_set_delay(2000, slice_num, true);
       }
     } else {
+      // verifica se já se passaram os 3 segundos
       if (counter > 0) {
         // Verde (8 segundos)
         if (traffic_light_step == 0) {
@@ -267,7 +298,9 @@ void vBuzzerTask() {
   }
 }
 
+// Implementa a tarefa dos LEDs
 void vLedMatrixTask() {
+  // Iniciliza a matriz de LEDs, faz a limpeza do buffer e envia para a matriz
   npInit(LED_PIN);
   npClear();
   npWrite();
@@ -276,7 +309,9 @@ void vLedMatrixTask() {
   const uint stepsPer = 2000 / STEP_MS;
 
   while (true) {
+    // Verifica se o modo é noturno
     if (!is_night_mode) {
+      // verifica se já se passaram os 3 segundos, se o sinal é o verde e quantos pulsos emitidos pela matriz já ocorreram.
       if (counter > 0 && traffic_light_step == 0 && ledsMatrixCounter < 4) {
         // Liga
         setMatrixColor();
@@ -291,65 +326,73 @@ void vLedMatrixTask() {
         ledsMatrixCounter++;
       }
     } else {
+      // Apaga a matriz de LEDs
       npClear();
       npWrite();
     }
   }
 }
 
+// Implementa a tarefa dos LEDs RGB (semaforo)
 void vLEDsRGBTask() {
+  // Iniciliza os LEDs
   led_rgb_setup(LED_RED);
   led_rgb_setup(LED_GREEN);
   led_rgb_setup(LED_BLUE);
 
   while (true) {
+    // Verifica se o modo é noturno
     if (is_night_mode) {
       // Entrando no modo noturno
-      if (counter == 0) {
+      if (counter == 0) { // verifica se counter é igual a zero. Se sim, desliga todos os LEDs e aplica delay de 3 segundos.
         gpio_put(LED_RED, false);
         gpio_put(LED_GREEN, false);
         gpio_put(LED_BLUE, false);
         vTaskDelay(pdMS_TO_TICKS(3000));
         counter++;
+        // após o delay de 3 segundos e incrementa a variável counter. Para que esse bloco seja executado apenas quando
+        // o botão A for pressionado (antes do início do primeiro ciclo).
       }
 
       printf("contador: %d\n", counter);
 
-      // Amarelo por 2s
+      // liga
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, true);
       leds_set_delay(2000, true);
 
-      // desligado por 2s
+      // deliga
       gpio_put(LED_RED,   false);
       gpio_put(LED_GREEN, false);
       leds_set_delay(2000, true);
     } else {
       // Entrando no modo normal
-      if (counter == 0) {
+      if (counter == 0) { // verifica se counter é igual a zero. Se sim, desliga todos os LEDs e aplica delay de 3 segundos.
         gpio_put(LED_RED, false);
         gpio_put(LED_GREEN, false);
         gpio_put(LED_BLUE, false);
         vTaskDelay(pdMS_TO_TICKS(3000));
         counter++;
+        // após o delay de 3 segundos e incrementa a variável counter. Para que esse bloco seja executado apenas quando
+        // o botão A for pressionado (antes do início do primeiro ciclo).
       }
 
       printf("contador: %d\n", counter);
 
       // Verde por 8s
-      traffic_light_step = 0;
+      traffic_light_step = 0; // Define que o sinal verde está ativado (utilizado para definir os estados do buzzer e do display)
       gpio_put(LED_RED,   false);
       gpio_put(LED_GREEN, true);
       leds_set_delay(8000, false);
 
       // Amarelo por 4s
-      traffic_light_step = 1;
+      traffic_light_step = 1; // Define que o sinal amarelo está ativado (utilizado para definir os estados do buzzer e do display)
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, true);
       leds_set_delay(4000, false);
 
       // Vermelho por 8s
-      traffic_light_step = 2;
+      traffic_light_step = 2; // Define que o sinal vermelho está ativado (utilizado para definir os estados do buzzer e do display)
       ledsMatrixCounter = 0;
       gpio_put(LED_RED,   true);
       gpio_put(LED_GREEN, false);
@@ -358,23 +401,27 @@ void vLEDsRGBTask() {
   }
 }
 
+// Função responsável por tratar as interrupções do botão A e B
 void gpio_irq_handler(uint gpio, uint32_t events) {
-  uint32_t current_time = to_ms_since_boot(get_absolute_time()); // retorna o tempo total em ms desde o boot do rp2040
+  uint32_t current_time = to_ms_since_boot(get_absolute_time()); // Vetorna o tempo total em ms desde o boot do rp2040
 
-  // verifica se a diff entre o tempo atual e a ultima vez que o botão foi pressionado é maior que o tempo de debounce
+  // Verifica se a diff entre o tempo atual e a ultima vez que o botão foi pressionado é maior que o tempo de debounce
   if (current_time - last_time_btn_press > debounce_delay_ms) {
     last_time_btn_press = current_time;
 
+    // Tratamento da interrupção do botão A
     if (gpio == BTN_A_PIN) {
-      counter = 0;
-      is_night_mode = !is_night_mode;
+      counter = 0; // Zera a variável counter para aplicar o delay de 3 segundos antes do primeiro ciclo do modo de operação definido para o semaforo
+      is_night_mode = !is_night_mode; // Altera o modo de operação do semáforo (normal/noturno)
       traffic_light_step = 0;
       ledsMatrixCounter = 0;
-      pwm_set_enabled(slice_num, false);
+      pwm_set_enabled(slice_num, false); // Desliga o buzzer
 
+      // Desliga a matriz de LEDs
       npClear();
       npWrite();
 
+      // Imprime mensagem de DEBUG no monitor serial
       printf("contador: %d\n", counter);
 
       if (is_night_mode) {
@@ -382,7 +429,7 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
       } else {
         printf("Modo Atual: Normal.\n");
       }
-    } else if (gpio == BTN_B_PIN) {
+    } else if (gpio == BTN_B_PIN) { // Tratamento da interrupção do botão B
         reset_usb_boot(0, 0);
     }
   }
